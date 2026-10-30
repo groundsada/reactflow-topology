@@ -7,9 +7,43 @@ import { Inspector } from './Inspector'
 import { SenseViewer } from './SenseViewer'
 import { Splitter } from './Splitter'
 import { connectivity, healthFor, loadPaths, shortSite, siteColours, siteOrder, vlansOf } from './data'
-import type { Path, ViewId } from './types'
+import { CanvasScreen, CommandScreen, ListScreen, MatrixScreen } from './screens'
+import { ZoomScreen } from './ZoomScreen'
+import type { Path, ScreenId, ViewId } from './types'
+
+const SCREENS: { id: ScreenId; label: string }[] = [
+  { id: 'canvas', label: 'Canvas' },
+  { id: 'zoom', label: 'Zoom map' },
+  { id: 'list', label: 'List' },
+  { id: 'command', label: 'Command' },
+  { id: 'matrix', label: 'Matrix' },
+  { id: 'console', label: 'Console' },
+]
 
 export default function App() {
+  const [screen, setScreen] = useState<ScreenId>('canvas')
+
+  return (
+    <div className="screen-switch">
+      <nav className="screen-nav">
+        <span className="nav-brand">topology</span>
+        {SCREENS.map((candidate) => (
+          <button key={candidate.id} className={screen === candidate.id ? 'on' : ''} onClick={() => setScreen(candidate.id)}>
+            {candidate.label}
+          </button>
+        ))}
+      </nav>
+      {screen === 'canvas' && <CanvasScreen />}
+      {screen === 'zoom' && <ZoomScreen />}
+      {screen === 'list' && <ListScreen />}
+      {screen === 'command' && <CommandScreen />}
+      {screen === 'matrix' && <MatrixScreen />}
+      {screen === 'console' && <ConsoleScreen />}
+    </div>
+  )
+}
+
+function ConsoleScreen() {
   const [paths, setPaths] = useState<Path[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pathId, setPathId] = useState<string | null>(null)
@@ -17,30 +51,21 @@ export default function App() {
   const [focus, setFocus] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
-  const [readAt, setReadAt] = useState('')
   const [railWidth, setRailWidth] = useState(268)
   const [inspectorWidth, setInspectorWidth] = useState(330)
 
-  const read = useMemo(
-    () => () => {
-      loadPaths()
-        .then((loaded) => {
-          setPaths(loaded)
-          setReadAt(new Date().toLocaleTimeString())
-          setPathId((previous) => {
-            if (previous && loaded.some((path) => path.id === previous)) return previous
-            const interesting = loaded.find((path) => path.nodes.filter((node) => node.endpoint).length > 2) ?? loaded[0]
-            return interesting?.id ?? null
-          })
-        })
-        .catch((ex) => setError(String(ex)))
-    },
-    [],
-  )
-
   useEffect(() => {
-    read()
-  }, [read])
+    loadPaths()
+      .then((loaded) => {
+        setPaths(loaded)
+        setPathId((previous) => {
+          if (previous && loaded.some((path) => path.id === previous)) return previous
+          const interesting = loaded.find((path) => path.nodes.filter((node) => node.endpoint).length > 2) ?? loaded[0]
+          return interesting?.id ?? null
+        })
+      })
+      .catch((ex) => setError(String(ex)))
+  }, [])
 
   const path = useMemo(() => paths?.find((candidate) => candidate.id === pathId) ?? null, [paths, pathId])
 
@@ -54,10 +79,7 @@ export default function App() {
     const needle = filter.trim().toLowerCase()
     if (!needle) return paths
     return paths.filter((candidate) =>
-      [candidate.name, candidate.uuid, candidate.orchestrator ?? '', candidate.intent.type ?? '', ...candidate.nodes.map((node) => node.site)]
-        .join(' ')
-        .toLowerCase()
-        .includes(needle),
+      [candidate.name, candidate.uuid, candidate.intent.type ?? '', ...candidate.nodes.map((node) => node.site)].join(' ').toLowerCase().includes(needle),
     )
   }, [paths, filter])
 
@@ -66,9 +88,6 @@ export default function App() {
       <div className="fatal">
         <h1>Could not load paths</h1>
         <p className="mono">{error}</p>
-        <p>
-          Run the exporter first: <code>python3 tools/export_paths.py</code>
-        </p>
       </div>
     )
   }
@@ -83,10 +102,9 @@ export default function App() {
     >
       <aside className="rail">
         <div className="rail-head">
-          <h1>Topology views</h1>
+          <h1>Path console</h1>
           <p className="sub">
-            {paths.filter((candidate) => candidate.source === 'production').length} stored reservations ·{' '}
-            {paths.filter((candidate) => candidate.source === 'synthetic').length} synthetic shapes
+            {paths.filter((candidate) => candidate.source === 'production').length} reservations · {paths.filter((candidate) => candidate.source === 'synthetic').length} synthetic
           </p>
           <input className="search" placeholder="filter by name, site, intent…" value={filter} onChange={(event) => setFilter(event.target.value)} />
         </div>
@@ -123,8 +141,8 @@ export default function App() {
       <main className="main">
         <header className="topbar">
           <div className="tabs">
-            <button className={`tab ${view === 'sense' ? 'on' : ''}`} onClick={() => setView('sense')} title="The SENSE-O topology viewer interface: NML resource inspector, expandable chassis, hover-to-inspect paths, layout engines.">
-              SENSE-O viewer
+            <button className={`tab ${view === 'sense' ? 'on' : ''}`} onClick={() => setView('sense')}>
+              Inspector
             </button>
             <span className="tab-split" />
             {VIEWS.map((candidate) => (
@@ -140,7 +158,7 @@ export default function App() {
 
         {view === 'sense' ? (
           <section className="canvas">
-            {path && !path.problem ? <SenseViewer path={path} onRefresh={read} refreshedAt={readAt} /> : <div className="fatal small">{path?.problem ?? 'pick a path'}</div>}
+            {path && !path.problem ? <SenseViewer path={path} onRefresh={() => undefined} refreshedAt="" /> : <div className="fatal small">{path?.problem ?? 'pick a path'}</div>}
           </section>
         ) : (
           <section className="canvas">

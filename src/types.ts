@@ -90,3 +90,5 @@ export type Path = {
 }
 
 export type ViewId = 'layered' | 'grouped' | 'ladder' | 'radial' | 'metro'
+
+export type ScreenId = 'canvas' | 'zoom' | 'list' | 'command' | 'matrix' | 'console'
