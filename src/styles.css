@@ -1855,7 +1855,9 @@ body.resizing {
 }
 
 .cmd-backdrop {
-  position: fixed;
+  /* Absolute, not fixed: a fixed overlay covers the screen nav too, so the
+     palette traps you on this screen until you dismiss it. */
+  position: absolute;
   inset: 0;
   background: rgb(16 24 32 / 28%);
   z-index: 60;

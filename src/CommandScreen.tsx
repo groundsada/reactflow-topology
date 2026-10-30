@@ -49,7 +49,7 @@ function index(paths: Path[]): Hit[] {
 export function CommandScreen() {
   const [paths, setPaths] = useState<Path[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [needle, setNeedle] = useState('')
   const [cursor, setCursor] = useState(0)
   const [active, setActive] = useState<{ pathId: string | null; label: string | null }>({ pathId: null, label: null })
@@ -109,9 +109,10 @@ export function CommandScreen() {
         </button>
         {active.label && <span className="head-meta">{active.label}</span>}
       </header>
-      <div className="screen-body">{path ? <Graph path={path} /> : <div className="screen-msg">search for a path, host, VLAN or port</div>}</div>
+      <div className="screen-body">
+        {path ? <Graph path={path} /> : <div className="screen-msg">press ⌘K, or click Search anything, to find a path, host, VLAN or port</div>}
 
-      {open && (
+        {open && (
         <div className="cmd-backdrop" onClick={() => setOpen(false)}>
           <div className="cmd-palette" onClick={(event) => event.stopPropagation()}>
             <input
@@ -144,7 +145,8 @@ export function CommandScreen() {
             </ul>
           </div>
         </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
