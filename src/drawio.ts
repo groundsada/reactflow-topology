@@ -54,6 +54,43 @@ export type SceneEdge = {
   width: number
   dash: string | null
   label: string | null
+  labelColor: string
+  exitX: number
+  exitY: number
+  entryX: number
+  entryY: number
+}
+
+// solid pastel fills for site containers, straight from the reference diagrams
+const GROUP_FILLS = ['#A9C4EB', '#D5E8D4', '#FFE6CC', '#F8CECC', '#E1D5E7', '#DAE8FC', '#FFF2CC', '#D0E0E3']
+function groupFill(site: string): string {
+  return GROUP_FILLS[Math.abs([...site].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % GROUP_FILLS.length]
+}
+
+function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+}
+
+// attach lines to the shape edge facing the other endpoint, so they never
+// start in the middle of a box and cover its text
+function anchorOf(nodes: SceneNode[], source: string, target: string): { exitX: number; exitY: number; entryX: number; entryY: number } {
+  const a = nodes.find((n) => n.id === source)
+  const b = nodes.find((n) => n.id === target)
+  if (!a || !b) return { exitX: 0.5, exitY: 0.5, entryX: 0.5, entryY: 0.5 }
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2)
+  const dy = b.y + b.h / 2 - (a.y + a.h / 2)
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { exitX: 1, exitY: 0.5, entryX: 0, entryY: 0.5 }
+      : { exitX: 0, exitY: 0.5, entryX: 1, entryY: 0.5 }
+  }
+  return dy >= 0
+    ? { exitX: 0.5, exitY: 1, entryX: 0.5, entryY: 0 }
+    : { exitX: 0.5, exitY: 0, entryX: 0.5, entryY: 1 }
 }
 
 export type Scene = {
@@ -78,16 +115,14 @@ export function scene(path: Path, options: ExportOptions): Scene {
   let groups: SceneGroup[] = []
   if (options.layout === 'grouped') {
     const laid = groupedLayout(path)
-    placed = laid.nodes
-    groups = laid.groups.map((box) => ({
-      id: `group-${box.site}`,
-      site: box.site,
-      x: box.x,
-      y: box.y,
-      w: box.w,
-      h: box.h,
-      colour: bySite.get(box.site) ?? MONO,
-    }))
+    // inner node positions are relative to their site box; add the box origin
+    const origin = new Map(laid.groups.map((box) => [box.site, box]))
+    const siteOf = new Map(path.nodes.map((n) => [n.id, n.site]))
+    placed = new Map()
+    for (const [id, pos] of laid.nodes) {
+      const box = origin.get(siteOf.get(id) ?? '')
+      placed.set(id, { x: (box?.x ?? 0) + pos.x, y: (box?.y ?? 0) + pos.y, w: pos.w, h: pos.h })
+    }
   } else if (options.layout === 'radial') {
     placed = radialLayout(path)
   } else if (options.layout === 'metro') {
@@ -96,21 +131,42 @@ export function scene(path: Path, options: ExportOptions): Scene {
     placed = layeredLayout(path, 'LR')
   }
 
+  // export boxes are sized to their content, not the on-screen node size:
+  // title 16 bold + one line per row, so nothing clips
+  const SCALE = 1.45
+  const nodeSize = (node: DeviceNode): { w: number; h: number } => {
+    const rows = options.detail === 'full' ? 2 + Math.min(node.ports.length, 4) + (node.ports.length > 4 ? 1 : 0) : 2
+    return { w: 260, h: Math.max(64, 30 + rows * 19) }
+  }
+
   const nodes: SceneNode[] = path.nodes
     .filter((node) => placed.has(node.id))
     .map((node) => {
       const pos = placed.get(node.id)!
+      const size = nodeSize(node)
       return {
         id: node.id,
-        x: pos.x,
-        y: pos.y,
-        w: pos.w,
-        h: pos.h,
+        x: pos.x * SCALE,
+        y: pos.y * SCALE,
+        w: size.w,
+        h: size.h,
         device: node,
         stroke: strokeOf(node),
         parent: options.layout === 'grouped' ? `group-${node.site}` : null,
       }
     })
+
+  // group boxes recomputed from the sized child nodes, with room for the label
+  if (options.layout === 'grouped') {
+    groups = [...new Set(nodes.map((n) => n.device.site))].map((site) => {
+      const members = nodes.filter((n) => n.device.site === site)
+      const minx = Math.min(...members.map((n) => n.x)) - 46
+      const miny = Math.min(...members.map((n) => n.y)) - 62
+      const maxx = Math.max(...members.map((n) => n.x + n.w)) + 46
+      const maxy = Math.max(...members.map((n) => n.y + n.h)) + 46
+      return { id: `group-${site}`, site, x: minx, y: miny, w: maxx - minx, h: maxy - miny, colour: bySite.get(site) ?? MONO }
+    })
+  }
 
   // per-link mixed palette, the way the hand-drawn diagrams do it: each
   // circuit picks its own color instead of one uniform accent
@@ -142,6 +198,8 @@ export function scene(path: Path, options: ExportOptions): Scene {
       width,
       dash: edge.scope === 'transit' ? '1 1' : edge.scope === 'internal' ? '1 1' : null,
       label: options.edgeLabels ? (vlans.length ? vlans.join(',') : edge.scope === 'transit' ? 'transit' : '') : null,
+      labelColor: luminance(stroke) < 0.45 ? '#FFFFFF' : INK,
+      ...anchorOf(nodes, edge.source, edge.target),
     }
   })
 
@@ -196,19 +254,19 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
 
     if (includeLegend && options.legend && s.legend.length) {
       const lx = s.bounds.x - pad
-      const ly = s.bounds.y + s.bounds.h + 28
+      const ly = s.bounds.y + s.bounds.h + 96
       let row = 0
       let col = 0
       const cellW = 150
       const cellH = 22
       cells.push(
-        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=40;fontStyle=1;fontColor=#7F00FF;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${ly - 44}" width="700" height="48" as="geometry" /></mxCell>`,
+        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=40;fontStyle=1;fontColor=#7F00FF;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${ly - 72}" width="760" height="52" as="geometry" /></mxCell>`,
       )
       for (const item of s.legend) {
         const x = lx + col * cellW
         const y = ly + row * cellH
         cells.push(
-          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${item.colour};fillOpacity=25;strokeColor=${item.colour};strokeWidth=3;fontSize=14;fontColor=${INK};fontFamily=Helvetica;verticalAlign=middle" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
+          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(item.site)};strokeColor=${item.colour};strokeWidth=3;fontSize=14;fontColor=${INK};fontFamily=Helvetica;verticalAlign=middle" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
         )
         col += 1
         if (col >= 4) {
@@ -222,7 +280,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const count = s.nodes.filter((node) => node.parent === g.id).length
       const label = `${esc(shortSite(g.site))} (${count})`
       cells.push(
-        `<mxCell id="${esc(g.id)}" value="${label}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${g.colour};fillOpacity=14;strokeColor=${g.colour};strokeWidth=6;fontColor=${g.colour};fontSize=18;fontStyle=1;fontFamily=Helvetica;verticalAlign=top;labelPosition=center;verticalLabelPosition=top;spacingTop=8" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(g.id)}" value="${label}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(g.site)};strokeColor=${g.colour};strokeWidth=6;fontColor=${g.colour};fontSize=20;fontStyle=1;fontFamily=Helvetica;verticalAlign=top;spacingTop=12;spacingLeft=14" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
       )
     }
 
@@ -232,21 +290,21 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const statusColour = health?.status === 'ok' ? OK : health?.status === 'warning' ? WARN : UNMANAGED
       const lines: string[] = []
       if (options.detail === 'full') {
-        lines.push(`<b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b>`)
-        lines.push(`<font color="${DIM}">${esc(shortSite(d.site))} · ${d.kind === 'host' ? 'host' : 'switch'}</font>`)
+        lines.push(`<font style="font-size:17px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
+        lines.push(`<font style="font-size:12px" color="${DIM}">${esc(shortSite(d.site))} · ${d.kind === 'host' ? 'host' : 'switch'}</font>`)
         for (const port of d.ports.slice(0, 4)) {
           const parts = [port.name, port.vlan ? `VLAN ${port.vlan}` : '', port.ipv4 ?? '', port.ipv6 ?? ''].filter(Boolean)
-          lines.push(`<font color="${PORT_INK}">${esc(parts.join(' · '))}</font>`)
+          lines.push(`<font style="font-size:11px" color="${PORT_INK}">${esc(parts.join(' · '))}</font>`)
         }
-        if (d.ports.length > 4) lines.push(`<font color="${PORT_INK}">+${d.ports.length - 4} more ports</font>`)
+        if (d.ports.length > 4) lines.push(`<font style="font-size:11px" color="${PORT_INK}">+${d.ports.length - 4} more ports</font>`)
       } else {
-        lines.push(`<b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b>`)
-        lines.push(`<font color="${DIM}">${esc(shortSite(d.site))}</font>`)
+        lines.push(`<font style="font-size:17px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
+        lines.push(`<font style="font-size:12px" color="${DIM}">${esc(shortSite(d.site))}</font>`)
       }
       const value = lines.join('<br/>')
       const dashed = d.kind === 'host' ? ';dashed=1;dashPattern=1 1' : ''
       cells.push(
-        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=${node.stroke};strokeWidth=5${dashed};fontColor=${INK};fontSize=14;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=${node.stroke};strokeWidth=5${dashed};fontColor=${INK};fontSize=14;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="1"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
       )
       if (options.detail === 'full' && health) {
         cells.push(
@@ -257,10 +315,10 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
 
     for (const edge of s.edges) {
       const dash = edge.dash ? `;dashed=1;dashPattern=${edge.dash}` : ''
-      // label sits directly on the line, in the line's own color, like the references
-      const label = edge.label ? `;fontSize=18;fontStyle=1;labelBackgroundColor=none` : ''
+      // label sits directly on the line, contrasting with the line color
+      const label = edge.label ? `;fontSize=18;fontStyle=1;fontColor=${edge.labelColor};labelBackgroundColor=none` : ''
       cells.push(
-        `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="endArrow=none;html=1;rounded=0;curved=1;exitX=0.5;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;strokeColor=${edge.stroke};strokeWidth=${edge.width}${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="endArrow=none;html=1;rounded=0;curved=1;exitX=${edge.exitX};exitY=${edge.exitY};exitDx=0;exitDy=0;exitPerimeter=1;entryX=${edge.entryX};entryY=${edge.entryY};entryDx=0;entryDy=0;entryPerimeter=1;strokeColor=${edge.stroke};strokeWidth=${edge.width}${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
       )
     }
 
