@@ -4,6 +4,7 @@ import { healthFor, loadPaths, shortSite, siteColours, siteOrder } from './data'
 import { layeredLayout, orientation } from './layouts'
 import { LinkEdgeView } from './edges'
 import { DeviceNodeView } from './nodes'
+import { ExportDialog } from './ExportDialog'
 import type { Path } from './types'
 export { CommandScreen } from './CommandScreen'
 
@@ -93,6 +94,7 @@ export function CanvasScreen() {
   const { paths, error } = usePaths()
   const [pathId, setPathId] = useState<string | null>(null)
   const [detail, setDetail] = useState<{ kind: 'node' | 'edge'; id: string; at: { x: number; y: number } } | null>(null)
+  const [exporting, setExporting] = useState(false)
   const path = useMemo(() => {
     if (!paths) return null
     if (pathId) return paths.find((candidate) => candidate.id === pathId) ?? paths[0]
@@ -114,6 +116,7 @@ export function CanvasScreen() {
         <span className="head-meta">
           {path.nodes.filter((n) => n.endpoint).length} endpoints · {siteOrder(path).length} sites · {path.hops.length} hops
         </span>
+        <button className="tab export-btn" onClick={() => setExporting(true)}>Export draw.io</button>
       </header>
       <div className="screen-body">
         <Graph path={path} onPick={(kind, id, at) => setDetail(id && at ? { kind, id, at } : null)} />
@@ -152,6 +155,7 @@ export function CanvasScreen() {
           </div>
         )}
       </div>
+      {exporting && <ExportDialog path={path} onClose={() => setExporting(false)} />}
       <footer className="filmstrip">
         {paths.map((candidate) => {
           const warn = Object.values(candidate.health).some((h) => h.status === 'warning')
