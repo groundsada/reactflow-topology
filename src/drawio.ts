@@ -120,7 +120,7 @@ export function scene(path: Path, options: ExportOptions): Scene {
       source: edge.source,
       target: edge.target,
       stroke,
-      width: edge.scope === 'interdomain' ? 2 : 1,
+      width: edge.scope === 'interdomain' ? 3.5 : 2,
       dash: edge.scope === 'transit' ? '1 4' : edge.scope === 'internal' ? '5 4' : null,
       label: options.edgeLabels ? (vlans.length ? vlans.join(',') : edge.scope === 'transit' ? 'transit' : '') : null,
     }
@@ -189,7 +189,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
         const x = lx + col * cellW
         const y = ly + row * cellH
         cells.push(
-          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="shape=rectangle;strokeColor=${item.colour};fillColor=${item.colour};fillOpacity=18;strokeWidth=2;rounded=1;arcSize=12;fontSize=10;fontColor=${INK};fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
+          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="shape=rectangle;strokeColor=${item.colour};fillColor=${item.colour};fillOpacity=18;strokeWidth=2;rounded=1;arcSize=12;fontSize=11;fontColor=${INK};fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
         )
         col += 1
         if (col >= 4) {
@@ -203,7 +203,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const count = s.nodes.filter((node) => node.parent === g.id).length
       const label = `${esc(shortSite(g.site))} (${count})`
       cells.push(
-        `<mxCell id="${esc(g.id)}" value="${label}" style="swimlane;startSize=26;horizontal=1;fillColor=none;strokeColor=${g.colour};strokeWidth=1.5;dashed=0;fontColor=${g.colour};fontSize=11;fontStyle=1;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(g.id)}" value="${label}" style="swimlane;startSize=26;horizontal=1;fillColor=none;strokeColor=${g.colour};strokeWidth=2.5;dashed=0;fontColor=${g.colour};fontSize=11;fontStyle=1;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
       )
     }
 
@@ -213,7 +213,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const statusColour = health?.status === 'ok' ? OK : health?.status === 'warning' ? WARN : UNMANAGED
       const lines: string[] = []
       if (options.detail === 'full') {
-        lines.push(`${d.label}${d.endpoint ? ' (endpoint)' : ''}`)
+        lines.push(`<b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b>`)
         lines.push(`<font color="${DIM}">${esc(shortSite(d.site))} · ${d.kind === 'host' ? 'host' : 'switch'}</font>`)
         for (const port of d.ports.slice(0, 4)) {
           const parts = [port.name, port.vlan ? `VLAN ${port.vlan}` : '', port.ipv4 ?? '', port.ipv6 ?? ''].filter(Boolean)
@@ -221,24 +221,24 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
         }
         if (d.ports.length > 4) lines.push(`<font color="${PORT_INK}">+${d.ports.length - 4} more ports</font>`)
       } else {
-        lines.push(`${d.label}${d.endpoint ? ' (endpoint)' : ''}`)
+        lines.push(`<b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b>`)
         lines.push(`<font color="${DIM}">${esc(shortSite(d.site))}</font>`)
       }
       const value = lines.join('<br/>')
       const dashed = d.kind === 'host' ? ';dashed=1' : ''
       cells.push(
-        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${node.stroke};strokeWidth=2${dashed};fontColor=${INK};fontSize=11;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${node.stroke};strokeWidth=3.5${dashed};fontColor=${INK};fontSize=12;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
       )
       if (options.detail === 'full' && health) {
         cells.push(
-          `<mxCell id="${cellId('dot', n++)}" value="" style="ellipse;fillColor=${statusColour};strokeColor=none" vertex="1" parent="1"><mxGeometry x="${node.x + node.w - 16}" y="${node.y + 6}" width="8" height="8" as="geometry" /></mxCell>`,
+          `<mxCell id="${cellId('dot', n++)}" value="" style="ellipse;fillColor=${statusColour};strokeColor=none" vertex="1" parent="1"><mxGeometry x="${node.x + node.w - 19}" y="${node.y + 6}" width="11" height="11" as="geometry" /></mxCell>`,
         )
       }
     }
 
     for (const edge of s.edges) {
       const dash = edge.dash ? `;dashed=1;dashPattern=${edge.dash}` : ''
-      const label = edge.label ? `;edgeLabel=1;labelBackgroundColor=#ffffff;fontSize=9;fontColor=${DIM}` : ''
+      const label = edge.label ? `;edgeLabel=1;labelBackgroundColor=#ffffff;fontSize=11;fontStyle=1;fontColor=${INK}` : ''
       cells.push(
         `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=${edge.stroke};strokeWidth=${edge.width};endArrow=none${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
       )
