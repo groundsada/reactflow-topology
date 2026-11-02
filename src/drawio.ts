@@ -1,3 +1,4 @@
+import { deflateRaw } from 'pako'
 import { healthFor, shortSite, siteColours, vlanColours } from './data'
 import { groupedLayout, layeredLayout, metroLayout, radialLayout } from './layouts'
 import type { DeviceNode, Path } from './types'
@@ -226,7 +227,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const value = lines.join('<br/>')
       const dashed = d.kind === 'host' ? ';dashed=1' : ''
       cells.push(
-        `<mxCell id="${esc(node.id)}" value="${value}" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${node.stroke};strokeWidth=2${dashed};fontColor=${INK};fontSize=11;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${node.stroke};strokeWidth=2${dashed};fontColor=${INK};fontSize=11;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
       )
       if (options.detail === 'full' && health) {
         cells.push(
@@ -271,19 +272,36 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
   return pages
 }
 
+// draw.io stores each <diagram> payload as base64(deflateRaw(encodeURIComponent(xml))).
+// Plain escaped XML in the text node is rejected by Graph.decompress (atob) on open.
+function compress(xml: string): string {
+  const bytes = deflateRaw(encodeURIComponent(xml))
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
+}
+
+function guid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 export function toDrawioFile(path: Path, options: ExportOptions): { name: string; blob: Blob } {
   const pages = drawioPages(path, options)
-  const multi = pages.length > 1
   const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'topology'
-  if (multi) {
-    const parts = pages.map((p) => `<diagram name="${esc(p.name)}" id="${esc(p.name)}">${esc(p.xml)}</diagram>`).join('')
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="reactflow-topology" agent="" version="24.0.0">${parts}</mxfile>`
+  if (options.pages && pages.length > 1) {
+    const parts = pages.map((p) => `<diagram name="${esc(p.name)}" id="${guid()}">${compress(p.xml)}</diagram>`).join('')
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="reactflow-topology" agent="" version="24.0.0" modified="${new Date().toISOString()}">${parts}</mxfile>`
     return { name: `${slug(path.name)}.drawio`, blob: new Blob([xml], { type: 'application/vnd.drawio' }) }
   }
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="reactflow-topology"><diagram name="${esc(pages[0].name)}" id="${esc(pages[0].name)}">${esc(pages[0].xml)}</diagram></mxfile>`
+  // single-page: .drawio.svg with the model in the svg content attribute, which is
+  // the form draw.io reads back from an svg (raw xml, attribute-escaped)
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="reactflow-topology" agent="" version="24.0.0"><diagram name="${esc(pages[0].name)}" id="${guid()}">${compress(pages[0].xml)}</diagram></mxfile>`
   const w = 1000
   const h = 800
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${esc(xml)}</div></foreignObject></svg>`
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" content="${esc(xml)}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" />`
   return { name: `${slug(path.name)}.drawio.svg`, blob: new Blob([svg], { type: 'image/svg+xml' }) }
 }
 
