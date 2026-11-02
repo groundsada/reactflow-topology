@@ -4,7 +4,7 @@ import { groupedLayout, layeredLayout, metroLayout, radialLayout } from './layou
 import type { DeviceNode, Path } from './types'
 
 export type ExportLayout = 'layered' | 'grouped' | 'radial' | 'metro'
-export type ExportColour = 'site' | 'vlan' | 'mono'
+export type ExportColour = 'mixed' | 'site' | 'vlan' | 'mono'
 export type ExportDetail = 'full' | 'compact'
 
 export type ExportOptions = {
@@ -18,7 +18,7 @@ export type ExportOptions = {
 
 export const DEFAULT_OPTIONS: ExportOptions = {
   layout: 'layered',
-  colour: 'site',
+  colour: 'mixed',
   detail: 'full',
   edgeLabels: true,
   legend: true,
@@ -69,10 +69,10 @@ export function scene(path: Path, options: ExportOptions): Scene {
   const byVlan = vlanColours(path)
   const strokeOf = (device: DeviceNode): string =>
     options.colour === 'mono'
-      ? MONO
+      ? '#000000'
       : options.colour === 'vlan'
-        ? byVlan.get(device.vlans[0] ?? '') ?? MONO
-        : bySite.get(device.site) ?? MONO
+        ? byVlan.get(device.vlans[0] ?? '') ?? '#3399FF'
+        : bySite.get(device.site) ?? '#3399FF'
 
   let placed: Map<string, { x: number; y: number; w: number; h: number }>
   let groups: SceneGroup[] = []
@@ -112,16 +112,35 @@ export function scene(path: Path, options: ExportOptions): Scene {
       }
     })
 
+  // per-link mixed palette, the way the hand-drawn diagrams do it: each
+  // circuit picks its own color instead of one uniform accent
+  const LINK_PALETTE = ['#3399FF', '#000000', '#4D9900', '#B09500', '#7F00FF', '#1BA1E2', '#00994D', '#CC0000', '#3700CC', '#808080']
+  const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)
+
   const edges: SceneEdge[] = path.edges.map((edge) => {
     const vlans = edge.vlans
-    const stroke = options.colour === 'mono' ? MONO : vlans.length ? byVlan.get(vlans[0]) ?? MONO : MONO
+    const stroke =
+      edge.scope === 'transit'
+        ? '#808080'
+        : options.colour === 'mono'
+          ? '#000000'
+          : options.colour === 'vlan'
+            ? vlans.length
+              ? byVlan.get(vlans[0]) ?? '#3399FF'
+              : '#3399FF'
+            : options.colour === 'site'
+              ? bySite.get(path.nodes.find((n) => n.id === edge.source)?.site ?? '') ?? '#3399FF'
+              : LINK_PALETTE[Math.abs(hash(edge.id)) % LINK_PALETTE.length]
+    // width encodes weight: fat ribbons, like the reference diagrams
+    const width =
+      edge.scope === 'transit' ? 10 : edge.scope === 'interdomain' ? 16 : Math.min(6 + (edge.sessions.length - 1) * 6, 40)
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       stroke,
-      width: edge.scope === 'interdomain' ? 3.5 : 2,
-      dash: edge.scope === 'transit' ? '1 4' : edge.scope === 'internal' ? '5 4' : null,
+      width,
+      dash: edge.scope === 'transit' ? '1 1' : edge.scope === 'internal' ? '1 1' : null,
       label: options.edgeLabels ? (vlans.length ? vlans.join(',') : edge.scope === 'transit' ? 'transit' : '') : null,
     }
   })
@@ -183,13 +202,13 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const cellW = 150
       const cellH = 22
       cells.push(
-        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=13;fontStyle=1;fontColor=${INK};fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${ly - 24}" width="420" height="20" as="geometry" /></mxCell>`,
+        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=40;fontStyle=1;fontColor=#7F00FF;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${ly - 44}" width="700" height="48" as="geometry" /></mxCell>`,
       )
       for (const item of s.legend) {
         const x = lx + col * cellW
         const y = ly + row * cellH
         cells.push(
-          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="shape=rectangle;strokeColor=${item.colour};fillColor=${item.colour};fillOpacity=18;strokeWidth=2;rounded=1;arcSize=12;fontSize=11;fontColor=${INK};fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
+          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${item.colour};fillOpacity=25;strokeColor=${item.colour};strokeWidth=3;fontSize=14;fontColor=${INK};fontFamily=Helvetica;verticalAlign=middle" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
         )
         col += 1
         if (col >= 4) {
@@ -203,7 +222,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const count = s.nodes.filter((node) => node.parent === g.id).length
       const label = `${esc(shortSite(g.site))} (${count})`
       cells.push(
-        `<mxCell id="${esc(g.id)}" value="${label}" style="swimlane;startSize=26;horizontal=1;fillColor=none;strokeColor=${g.colour};strokeWidth=2.5;dashed=0;fontColor=${g.colour};fontSize=11;fontStyle=1;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(g.id)}" value="${label}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${g.colour};fillOpacity=14;strokeColor=${g.colour};strokeWidth=6;fontColor=${g.colour};fontSize=18;fontStyle=1;fontFamily=Helvetica;verticalAlign=top;labelPosition=center;verticalLabelPosition=top;spacingTop=8" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
       )
     }
 
@@ -225,9 +244,9 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
         lines.push(`<font color="${DIM}">${esc(shortSite(d.site))}</font>`)
       }
       const value = lines.join('<br/>')
-      const dashed = d.kind === 'host' ? ';dashed=1' : ''
+      const dashed = d.kind === 'host' ? ';dashed=1;dashPattern=1 1' : ''
       cells.push(
-        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${node.stroke};strokeWidth=3.5${dashed};fontColor=${INK};fontSize=12;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(node.id)}" value="${esc(value)}" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=${node.stroke};strokeWidth=5${dashed};fontColor=${INK};fontSize=14;fontFamily=Helvetica;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6" vertex="1" parent="${node.parent ? esc(node.parent) : '1'}"><mxGeometry x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" as="geometry" /></mxCell>`,
       )
       if (options.detail === 'full' && health) {
         cells.push(
@@ -238,9 +257,10 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
 
     for (const edge of s.edges) {
       const dash = edge.dash ? `;dashed=1;dashPattern=${edge.dash}` : ''
-      const label = edge.label ? `;edgeLabel=1;labelBackgroundColor=#ffffff;fontSize=11;fontStyle=1;fontColor=${INK}` : ''
+      // label sits directly on the line, in the line's own color, like the references
+      const label = edge.label ? `;fontSize=18;fontStyle=1;labelBackgroundColor=none` : ''
       cells.push(
-        `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=${edge.stroke};strokeWidth=${edge.width};endArrow=none${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="endArrow=none;html=1;rounded=0;curved=1;exitX=0.5;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;strokeColor=${edge.stroke};strokeWidth=${edge.width}${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
       )
     }
 

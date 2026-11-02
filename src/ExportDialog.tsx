@@ -10,9 +10,10 @@ const LAYOUTS: { id: ExportOptions['layout']; label: string }[] = [
 ]
 
 const COLOURS: { id: ExportOptions['colour']; label: string }[] = [
+  { id: 'mixed', label: 'Mixed per link (hand-drawn look)' },
   { id: 'site', label: 'Colour by site' },
   { id: 'vlan', label: 'Colour by VLAN' },
-  { id: 'mono', label: 'Monochrome' },
+  { id: 'mono', label: 'Black (physical-fiber look)' },
 ]
 
 const DETAILS: { id: ExportOptions['detail']; label: string }[] = [
