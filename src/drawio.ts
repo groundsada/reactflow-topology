@@ -133,10 +133,10 @@ export function scene(path: Path, options: ExportOptions): Scene {
 
   // export boxes are sized to their content, not the on-screen node size:
   // title 16 bold + one line per row, so nothing clips
-  const SCALE = 1.45
+  const SCALE = 2.1
   const nodeSize = (node: DeviceNode): { w: number; h: number } => {
     const rows = options.detail === 'full' ? 2 + Math.min(node.ports.length, 4) + (node.ports.length > 4 ? 1 : 0) : 2
-    return { w: 260, h: Math.max(64, 30 + rows * 19) }
+    return { w: 320, h: Math.max(84, 40 + rows * 24) }
   }
 
   const nodes: SceneNode[] = path.nodes
@@ -160,10 +160,10 @@ export function scene(path: Path, options: ExportOptions): Scene {
   if (options.layout === 'grouped') {
     groups = [...new Set(nodes.map((n) => n.device.site))].map((site) => {
       const members = nodes.filter((n) => n.device.site === site)
-      const minx = Math.min(...members.map((n) => n.x)) - 46
-      const miny = Math.min(...members.map((n) => n.y)) - 62
-      const maxx = Math.max(...members.map((n) => n.x + n.w)) + 46
-      const maxy = Math.max(...members.map((n) => n.y + n.h)) + 46
+      const minx = Math.min(...members.map((n) => n.x)) - 60
+      const miny = Math.min(...members.map((n) => n.y)) - 84
+      const maxx = Math.max(...members.map((n) => n.x + n.w)) + 60
+      const maxy = Math.max(...members.map((n) => n.y + n.h)) + 60
       return { id: `group-${site}`, site, x: minx, y: miny, w: maxx - minx, h: maxy - miny, colour: bySite.get(site) ?? MONO }
     })
   }
@@ -245,7 +245,6 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
   const pages: DrawioPage[] = []
 
   const diagram = (s: Scene, includeLegend: boolean): string => {
-    const pad = 40
     const title = `${esc(path.name)} · ${esc(path.state ?? '')}${path.senseState ? ` · ${esc(path.senseState)}` : ''}`
     const cells: string[] = []
     cells.push(`<mxCell id="0" />`)
@@ -253,20 +252,20 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
     let n = 2
 
     if (includeLegend && options.legend && s.legend.length) {
-      const lx = s.bounds.x - pad
-      const ly = s.bounds.y + s.bounds.h + 96
+      const lx = s.bounds.x
+      const ly = s.bounds.y + s.bounds.h + 110
       let row = 0
       let col = 0
       const cellW = 150
       const cellH = 22
       cells.push(
-        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=40;fontStyle=1;fontColor=#7F00FF;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${ly - 72}" width="760" height="52" as="geometry" /></mxCell>`,
+        `<mxCell id="${cellId('legend', n++)}" value="${esc(title)}" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=56;fontStyle=1;fontColor=#7F00FF;fontFamily=Helvetica" vertex="1" parent="1"><mxGeometry x="${lx}" y="${s.bounds.y - 96}" width="900" height="64" as="geometry" /></mxCell>`,
       )
       for (const item of s.legend) {
         const x = lx + col * cellW
         const y = ly + row * cellH
         cells.push(
-          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(item.site)};strokeColor=${item.colour};strokeWidth=3;fontSize=14;fontColor=${INK};fontFamily=Helvetica;verticalAlign=middle" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
+          `<mxCell id="${cellId('leg', n++)}" value="${esc(shortSite(item.site))}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(item.site)};strokeColor=${item.colour};strokeWidth=3;fontSize=18;fontColor=${INK};fontFamily=Helvetica;verticalAlign=middle" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${cellW - 8}" height="${cellH - 4}" as="geometry" /></mxCell>`,
         )
         col += 1
         if (col >= 4) {
@@ -280,7 +279,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const count = s.nodes.filter((node) => node.parent === g.id).length
       const label = `${esc(shortSite(g.site))} (${count})`
       cells.push(
-        `<mxCell id="${esc(g.id)}" value="${label}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(g.site)};strokeColor=${g.colour};strokeWidth=6;fontColor=${g.colour};fontSize=20;fontStyle=1;fontFamily=Helvetica;verticalAlign=top;spacingTop=12;spacingLeft=14" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
+        `<mxCell id="${esc(g.id)}" value="${label}" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=${groupFill(g.site)};strokeColor=${g.colour};strokeWidth=6;fontColor=${g.colour};fontSize=26;fontStyle=1;fontFamily=Helvetica;verticalAlign=top;spacingTop=16;spacingLeft=18" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" as="geometry" /></mxCell>`,
       )
     }
 
@@ -290,16 +289,16 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
       const statusColour = health?.status === 'ok' ? OK : health?.status === 'warning' ? WARN : UNMANAGED
       const lines: string[] = []
       if (options.detail === 'full') {
-        lines.push(`<font style="font-size:17px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
-        lines.push(`<font style="font-size:12px" color="${DIM}">${esc(shortSite(d.site))} · ${d.kind === 'host' ? 'host' : 'switch'}</font>`)
+        lines.push(`<font style="font-size:22px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
+        lines.push(`<font style="font-size:15px" color="${DIM}">${esc(shortSite(d.site))} · ${d.kind === 'host' ? 'host' : 'switch'}</font>`)
         for (const port of d.ports.slice(0, 4)) {
           const parts = [port.name, port.vlan ? `VLAN ${port.vlan}` : '', port.ipv4 ?? '', port.ipv6 ?? ''].filter(Boolean)
-          lines.push(`<font style="font-size:11px" color="${PORT_INK}">${esc(parts.join(' · '))}</font>`)
+          lines.push(`<font style="font-size:14px" color="${PORT_INK}">${esc(parts.join(' · '))}</font>`)
         }
-        if (d.ports.length > 4) lines.push(`<font style="font-size:11px" color="${PORT_INK}">+${d.ports.length - 4} more ports</font>`)
+        if (d.ports.length > 4) lines.push(`<font style="font-size:14px" color="${PORT_INK}">+${d.ports.length - 4} more ports</font>`)
       } else {
-        lines.push(`<font style="font-size:17px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
-        lines.push(`<font style="font-size:12px" color="${DIM}">${esc(shortSite(d.site))}</font>`)
+        lines.push(`<font style="font-size:22px"><b>${d.label}${d.endpoint ? ' (endpoint)' : ''}</b></font>`)
+        lines.push(`<font style="font-size:15px" color="${DIM}">${esc(shortSite(d.site))}</font>`)
       }
       const value = lines.join('<br/>')
       const dashed = d.kind === 'host' ? ';dashed=1;dashPattern=1 1' : ''
@@ -316,7 +315,7 @@ export function drawioPages(path: Path, options: ExportOptions): DrawioPage[] {
     for (const edge of s.edges) {
       const dash = edge.dash ? `;dashed=1;dashPattern=${edge.dash}` : ''
       // label sits directly on the line, contrasting with the line color
-      const label = edge.label ? `;fontSize=18;fontStyle=1;fontColor=${edge.labelColor};labelBackgroundColor=none` : ''
+      const label = edge.label ? `;fontSize=24;fontStyle=1;fontColor=${edge.labelColor};labelBackgroundColor=none` : ''
       cells.push(
         `<mxCell id="${esc(edge.id)}" value="${edge.label ? esc(edge.label) : ''}" style="endArrow=none;html=1;rounded=0;curved=1;exitX=${edge.exitX};exitY=${edge.exitY};exitDx=0;exitDy=0;exitPerimeter=1;entryX=${edge.entryX};entryY=${edge.entryY};entryDx=0;entryDy=0;entryPerimeter=1;strokeColor=${edge.stroke};strokeWidth=${edge.width}${dash}${label}" edge="1" parent="1" source="${esc(edge.source)}" target="${esc(edge.target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`,
       )
